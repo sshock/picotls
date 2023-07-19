@@ -364,6 +364,9 @@ static void usage(const char *cmd)
            "                       the client. Server will report the ingress bandwidth.\n"
            "  -C certificate-file  certificate chain used for client authentication\n"
            "  -c certificate-file  certificate chain used for server authentication\n"
+           "  -P psk               pre-shared key used for client authentication\n"
+           "  -p psk               pre-shared key used for server authentication\n"
+           "  -d psk-identity      identity string to use with psk\n"
            "  -i file              a file to read from and send to the peer (default: stdin)\n"
            "  -I                   keep send side open after sending all data (client-only)\n"
            "  -j log-file          file to log probe events in JSON-Lines\n"
@@ -443,9 +446,9 @@ int main(int argc, char **argv)
     struct sockaddr_storage sa;
     socklen_t salen;
     int family = 0;
-    const char *raw_pub_key_file = NULL, *cert_location = NULL;
+    const char *raw_pub_key_file = NULL, *cert_location = NULL, *psk_key = NULL, *psk_identity = NULL;
 
-    while ((ch = getopt(argc, argv, "46abBC:c:i:Ij:k:nN:es:Sr:E:K:l:y:vV:h")) != -1) {
+    while ((ch = getopt(argc, argv, "46abBC:c:P:p:d:i:Ij:k:nN:es:Sr:E:K:l:y:vV:h")) != -1) {
         switch (ch) {
         case '4':
             family = AF_INET;
@@ -475,6 +478,14 @@ int main(int argc, char **argv)
             }
             cert_location = optarg;
             is_server = ch == 'c';
+            break;
+        case 'P':
+        case 'p':
+            psk_key = optarg;
+            is_server = ch == 'p';
+            break;
+        case 'd':
+            psk_identity = optarg;
             break;
         case 'i':
             input_file = optarg;
@@ -574,6 +585,11 @@ int main(int argc, char **argv)
     argc -= optind;
     argv += optind;
 
+	if (psk_key != NULL) {
+		hsprop.pre_shared_key.key = ptls_iovec_init(psk_key, strlen(psk_key));
+		hsprop.pre_shared_key.identity = psk_identity == NULL ? ptls_iovec_init("", 1) : ptls_iovec_init(psk_identity, strlen(psk_identity));
+	}
+
     if (raw_pub_key_file != NULL) {
         int is_dash = !strcmp(raw_pub_key_file, "-");
         if (is_server) {
@@ -604,7 +620,7 @@ int main(int argc, char **argv)
     }
 
     if (is_server) {
-        if (ctx.certificates.count == 0) {
+        if (hsprop.pre_shared_key.key.base == NULL && ctx.certificates.count == 0) {
             fprintf(stderr, "-c and -k options must be set\n");
             return 1;
         }
