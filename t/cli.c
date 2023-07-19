@@ -636,6 +636,11 @@ int main(int argc, char **argv)
         }
 #endif
         setup_session_cache(&ctx);
+
+        // workaround
+        if (psk_key != NULL) {
+            ctx.ticket_lifetime = 0;
+        }
     } else {
         /* client */
         if (use_early_data) {
