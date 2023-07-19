@@ -366,6 +366,9 @@ static void usage(const char *cmd)
            "  -C certificate-file  certificate chain used for client authentication\n"
            "  -c certificate-file  certificate chain used for server authentication\n"
 #endif
+           "  -P psk               pre-shared key used for client authentication\n"
+           "  -p psk               pre-shared key used for server authentication\n"
+           "  -d psk-identity      identity string to use with psk\n"
            "  -i file              a file to read from and send to the peer (default: stdin)\n"
            "  -I                   keep send side open after sending all data (client-only)\n"
            "  -j log-file          file to log probe events in JSON-Lines\n"
@@ -451,11 +454,12 @@ int main(int argc, char **argv)
     struct sockaddr_storage sa;
     socklen_t salen;
     int family = 0;
+    const char *psk_key = NULL, *psk_identity = NULL;
 
 #ifdef PSK_ONLY
-    const char* optstring = "46abBi:Ij:nN:es:SE:K:l:y:h";
+    const char* optstring = "46abBP:p:d:i:Ij:nN:es:SE:K:l:y:h";
 #else
-    const char* optstring = "46abBC:c:i:Ij:k:nN:es:Sr:E:K:l:y:vV:h";
+    const char* optstring = "46abBC:c:P:p:d:i:Ij:k:nN:es:Sr:E:K:l:y:vV:h";
     const char *raw_pub_key_file = NULL, *cert_location = NULL;
 #endif
 
@@ -492,6 +496,14 @@ int main(int argc, char **argv)
             is_server = ch == 'c';
             break;
 #endif
+        case 'P':
+        case 'p':
+            psk_key = optarg;
+            is_server = ch == 'p';
+            break;
+        case 'd':
+            psk_identity = optarg;
+            break;
         case 'i':
             input_file = optarg;
             break;
@@ -596,6 +608,11 @@ int main(int argc, char **argv)
     argc -= optind;
     argv += optind;
 
+	if (psk_key != NULL) {
+		hsprop.pre_shared_key.key = ptls_iovec_init(psk_key, strlen(psk_key));
+		hsprop.pre_shared_key.identity = psk_identity == NULL ? ptls_iovec_init("", 1) : ptls_iovec_init(psk_identity, strlen(psk_identity));
+	}
+
 #ifndef PSK_ONLY
     if (raw_pub_key_file != NULL) {
         int is_dash = !strcmp(raw_pub_key_file, "-");
@@ -629,7 +646,7 @@ int main(int argc, char **argv)
 
     if (is_server) {
 #ifndef PSK_ONLY
-        if (ctx.certificates.count == 0) {
+        if (hsprop.pre_shared_key.key.base == NULL && ctx.certificates.count == 0) {
             fprintf(stderr, "-c and -k options must be set\n");
             return 1;
         }
