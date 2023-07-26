@@ -585,10 +585,11 @@ int main(int argc, char **argv)
     argc -= optind;
     argv += optind;
 
-	if (psk_key != NULL) {
-		hsprop.pre_shared_key.key = ptls_iovec_init(psk_key, strlen(psk_key));
-		hsprop.pre_shared_key.identity = psk_identity == NULL ? ptls_iovec_init("", 1) : ptls_iovec_init(psk_identity, strlen(psk_identity));
-	}
+    if (psk_key != NULL) {
+        hsprop.pre_shared_key.key = ptls_iovec_init(psk_key, strlen(psk_key));
+        hsprop.pre_shared_key.identity = psk_identity == NULL ? ptls_iovec_init("", 1) : ptls_iovec_init(psk_identity, strlen(psk_identity));
+        hsprop.pre_shared_key.csid = PTLS_CIPHER_SUITE_AES_128_GCM_SHA256;
+    }
 
     if (raw_pub_key_file != NULL) {
         int is_dash = !strcmp(raw_pub_key_file, "-");
