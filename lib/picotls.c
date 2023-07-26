@@ -1668,7 +1668,9 @@ static int commission_handshake_secret(ptls_t *tls)
 
 static void log_client_random(ptls_t *tls)
 {
+#if PICOTLS_USE_DTRACE
     char buf[sizeof(tls->client_random) * 2 + 1];
+#endif
 
     PTLS_PROBE(CLIENT_RANDOM, tls, ptls_hexdump(buf, tls->client_random, sizeof(tls->client_random)));
     PTLS_LOG_CONN(client_random, tls, { PTLS_LOG_ELEMENT_HEXDUMP(bytes, tls->client_random, sizeof(tls->client_random)); });
@@ -4036,7 +4038,7 @@ static int vec_is_string(ptls_iovec_t x, const char *y)
 static int will_match_external_psk(const struct st_ptls_client_hello_t *ch, const struct st_ptls_external_psk_t *external_psk)
 {
     for (size_t psk_index = 0; psk_index < ch->psk.identities.count; ++psk_index) {
-        struct st_ptls_client_hello_psk_t *identity = ch->psk.identities.list + psk_index;
+        const struct st_ptls_client_hello_psk_t *identity = ch->psk.identities.list + psk_index;
         if (identity->identity.len == external_psk->identity.len &&
             memcmp(identity->identity.base, external_psk->identity.base, identity->identity.len) == 0) {
             return 1;
