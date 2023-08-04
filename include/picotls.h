@@ -145,6 +145,7 @@ extern "C" {
 #define PTLS_GROUP_X448 30
 #define PTLS_GROUP_NAME_X448 "x448"
 
+#ifndef PSK_ONLY
 /* signature algorithms */
 #define PTLS_SIGNATURE_RSA_PKCS1_SHA1 0x0201
 #define PTLS_SIGNATURE_RSA_PKCS1_SHA256 0x0401
@@ -155,6 +156,7 @@ extern "C" {
 #define PTLS_SIGNATURE_RSA_PSS_RSAE_SHA384 0x0805
 #define PTLS_SIGNATURE_RSA_PSS_RSAE_SHA512 0x0806
 #define PTLS_SIGNATURE_ED25519 0x0807
+#endif
 
 /* HPKE */
 #define PTLS_HPKE_MODE_BASE 0
@@ -192,11 +194,13 @@ extern "C" {
 #define PTLS_ALERT_UNEXPECTED_MESSAGE 10
 #define PTLS_ALERT_BAD_RECORD_MAC 20
 #define PTLS_ALERT_HANDSHAKE_FAILURE 40
+#ifndef PSK_ONLY
 #define PTLS_ALERT_BAD_CERTIFICATE 42
 #define PTLS_ALERT_UNSUPPORTED_CERTIFICATE 43
 #define PTLS_ALERT_CERTIFICATE_REVOKED 44
 #define PTLS_ALERT_CERTIFICATE_EXPIRED 45
 #define PTLS_ALERT_CERTIFICATE_UNKNOWN 46
+#endif
 #define PTLS_ALERT_ILLEGAL_PARAMETER 47
 #define PTLS_ALERT_UNKNOWN_CA 48
 #define PTLS_ALERT_ACCESS_DENIED 49
@@ -208,7 +212,9 @@ extern "C" {
 #define PTLS_ALERT_MISSING_EXTENSION 109
 #define PTLS_ALERT_UNSUPPORTED_EXTENSION 110
 #define PTLS_ALERT_UNRECOGNIZED_NAME 112
+#ifndef PSK_ONLY
 #define PTLS_ALERT_CERTIFICATE_REQUIRED 116
+#endif
 #define PTLS_ALERT_NO_APPLICATION_PROTOCOL 120
 #define PTLS_ALERT_ECH_REQUIRED 121
 
@@ -254,17 +260,23 @@ extern "C" {
 #define PTLS_HANDSHAKE_TYPE_NEW_SESSION_TICKET 4
 #define PTLS_HANDSHAKE_TYPE_END_OF_EARLY_DATA 5
 #define PTLS_HANDSHAKE_TYPE_ENCRYPTED_EXTENSIONS 8
+// when PSK_ONLY, we won't ever go into a state that checks for this
 #define PTLS_HANDSHAKE_TYPE_CERTIFICATE 11
+// when PSK_ONLY, we won't ever go into a state that checks for this
 #define PTLS_HANDSHAKE_TYPE_CERTIFICATE_REQUEST 13
+// when PSK_ONLY, we won't ever go into a state that checks for this
 #define PTLS_HANDSHAKE_TYPE_CERTIFICATE_VERIFY 15
 #define PTLS_HANDSHAKE_TYPE_FINISHED 20
 #define PTLS_HANDSHAKE_TYPE_KEY_UPDATE 24
+// when PSK_ONLY, we won't ever go into a state that checks for this
 #define PTLS_HANDSHAKE_TYPE_COMPRESSED_CERTIFICATE 25
 #define PTLS_HANDSHAKE_TYPE_MESSAGE_HASH 254
 #define PTLS_HANDSHAKE_TYPE_PSEUDO_HRR -1
 
+#ifndef PSK_ONLY
 #define PTLS_CERTIFICATE_TYPE_X509 0
 #define PTLS_CERTIFICATE_TYPE_RAW_PUBLIC_KEY 2
+#endif
 
 #define PTLS_ZERO_DIGEST_SHA256                                                                                                    \
     {                                                                                                                              \
@@ -618,6 +630,21 @@ typedef struct st_ptls_on_client_hello_parameters_t {
         ptls_iovec_t *list;
         size_t count;
     } negotiated_protocols;
+#ifdef PSK_ONLY
+    // Add dummy fields to keep public structs compatible with or without PSK_ONLY
+    struct {
+        const uint16_t *list;
+        size_t count;
+    } unused_1;
+    struct {
+        const uint16_t *list;
+        size_t count;
+    } unused_2;
+    struct {
+        const uint8_t *list;
+        size_t count;
+    } unused_3;
+#else
     struct {
         const uint16_t *list;
         size_t count;
@@ -630,6 +657,7 @@ typedef struct st_ptls_on_client_hello_parameters_t {
         const uint8_t *list;
         size_t count;
     } server_certificate_types;
+#endif
     /**
      * set to 1 if ClientHello is too old (or too new) to be handled by picotls
      */
@@ -645,11 +673,15 @@ PTLS_CALLBACK_TYPE0(uint64_t, get_time);
  * values. The callback is required to call `ptls_set_server_name` if an SNI extension needs to be sent to the client.
  */
 PTLS_CALLBACK_TYPE(int, on_client_hello, ptls_t *tls, ptls_on_client_hello_parameters_t *params);
+
+#ifndef PSK_ONLY
 /**
  * callback to generate the certificate message. `ptls_context::certificates` are set when the callback is set to NULL.
  */
 PTLS_CALLBACK_TYPE(int, emit_certificate, ptls_t *tls, ptls_message_emitter_t *emitter, ptls_key_schedule_t *key_sched,
                    ptls_iovec_t context, int push_status_request, const uint16_t *compress_algos, size_t num_compress_algos);
+#endif
+
 /**
  * An object that represents an asynchronous task (e.g., RSA signature generation).
  * When `ptls_handshake` returns `PTLS_ERROR_ASYNC_OPERATION`, it has an associated task in flight. The user should obtain the
@@ -669,6 +701,9 @@ typedef struct st_ptls_async_job_t {
      */
     void (*set_completion_callback)(struct st_ptls_async_job_t *self, void (*cb)(void *), void *cbdata);
 } ptls_async_job_t;
+
+#ifndef PSK_ONLY
+
 /**
  * When gerenating CertificateVerify, the core calls the callback to sign the handshake context using the certificate. This callback
  * supports asynchronous mode; see `ptls_openssl_sign_certificate_t` for more information.
@@ -693,6 +728,9 @@ typedef struct st_ptls_verify_certificate_t {
      */
     const uint16_t *algos;
 } ptls_verify_certificate_t;
+
+#endif // PSK_ONLY
+
 /**
  * Encrypt-and-signs (or verify-and-decrypts) a ticket (server-only).
  * When used for encryption (i.e., is_encrypt being set), the function should return 0 if successful, or else a non-zero value.
@@ -724,6 +762,8 @@ PTLS_CALLBACK_TYPE(int, update_traffic_key, ptls_t *tls, int is_enc, size_t epoc
  * callback for every extension detected during decoding
  */
 PTLS_CALLBACK_TYPE(int, on_extension, ptls_t *tls, uint8_t hstype, uint16_t exttype, ptls_iovec_t extdata);
+
+#ifndef PSK_ONLY
 /**
  *
  */
@@ -738,6 +778,8 @@ typedef struct st_ptls_decompress_certificate_t {
     int (*cb)(struct st_ptls_decompress_certificate_t *self, ptls_t *tls, uint16_t algorithm, ptls_iovec_t output,
               ptls_iovec_t input);
 } ptls_decompress_certificate_t;
+#endif
+
 /**
  * ECH: creates the AEAD context to be used for "Open"-ing inner CH. Given `config_id`, the callback looks up the ECH config and the
  * corresponding private key, invokes `ptls_hpke_setup_base_r` with provided `cipher`, `enc`, and `info_prefix` (which will be
@@ -766,6 +808,13 @@ struct st_ptls_context_t {
      * list of supported cipher-suites terminated by NULL
      */
     ptls_cipher_suite_t **cipher_suites;
+#ifdef PSK_ONLY
+    // Add dummy fields to keep public structs compatible with or without PSK_ONLY
+    struct {
+        ptls_iovec_t *list;
+        size_t count;
+    } unused_1;
+#else
     /**
      * list of certificates
      */
@@ -773,6 +822,7 @@ struct st_ptls_context_t {
         ptls_iovec_t *list;
         size_t count;
     } certificates;
+#endif
     /**
      * ECH
      */
@@ -802,6 +852,12 @@ struct st_ptls_context_t {
      *
      */
     ptls_on_client_hello_t *on_client_hello;
+#ifdef PSK_ONLY
+    // Add dummy fields to keep public structs compatible with or without PSK_ONLY
+    void *unused_2;
+    void *unused_3;
+    void *unused_4;
+#else
     /**
      *
      */
@@ -814,6 +870,7 @@ struct st_ptls_context_t {
      *
      */
     ptls_verify_certificate_t *verify_certificate;
+#endif
     /**
      * lifetime of a session ticket (server-only)
      */
@@ -852,6 +909,10 @@ struct st_ptls_context_t {
      * if set, EOED will not be emitted or accepted
      */
     unsigned omit_end_of_early_data : 1;
+#ifdef PSK_ONLY
+    // Add dummy fields to keep public structs compatible with or without PSK_ONLY
+    unsigned unused_5 : 1;
+#else
     /**
      * This option turns on support for Raw Public Keys (RFC 7250).
      *
@@ -865,6 +926,7 @@ struct st_ptls_context_t {
      * the correct one when that callback is being called (like handling swapping the contexts based on the value of SNI).
      */
     unsigned use_raw_public_keys : 1;
+#endif
     /**
      * boolean indicating if the cipher-suite should be chosen based on server's preference
      */
@@ -894,10 +956,15 @@ struct st_ptls_context_t {
      *
      */
     ptls_update_traffic_key_t *update_traffic_key;
+#ifdef PSK_ONLY
+    // Add dummy fields to keep public structs compatible with or without PSK_ONLY
+    void *unused_6;
+#else
     /**
      *
      */
     ptls_decompress_certificate_t *decompress_certificate;
+#endif
     /**
      *
      */
@@ -1549,11 +1616,13 @@ int ptls_send_alert(ptls_t *tls, ptls_buffer_t *sendbuf, uint8_t level, uint8_t 
  *
  */
 int ptls_export_secret(ptls_t *tls, void *output, size_t outlen, const char *label, ptls_iovec_t context_value, int is_early);
+#ifndef PSK_ONLY
 /**
  * build the body of a Certificate message. Can be called with tls set to NULL in order to create a precompressed message.
  */
 int ptls_build_certificate_message(ptls_buffer_t *buf, ptls_iovec_t request_context, ptls_iovec_t *certificates,
                                    size_t num_certificates, ptls_iovec_t ocsp_status);
+#endif
 /**
  *
  */
@@ -1722,11 +1791,13 @@ int ptls_server_name_is_ipaddr(const char *name);
  */
 int ptls_ech_encode_config(ptls_buffer_t *buf, uint8_t config_id, ptls_hpke_kem_t *kem, ptls_iovec_t public_key,
                            ptls_hpke_cipher_suite_t **ciphers, uint8_t max_name_length, const char *public_name);
+#ifndef PSK_ONLY
 /**
  * loads a certificate chain to ptls_context_t::certificates. `certificate.list` and each element of the list is allocated by
  * malloc.  It is the responsibility of the user to free them when discarding the TLS context.
  */
 int ptls_load_certificates(ptls_context_t *ctx, char const *cert_pem_file);
+#endif
 /**
  * SetupBaseS function of RFC 9180. Given `kem`, `algo`, `info`, and receiver's public key, returns an ephemeral public key and an
  * AEAD context used for encrypting data.

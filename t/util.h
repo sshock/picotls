@@ -36,9 +36,15 @@
 #include <sys/types.h>
 #include <arpa/nameser.h>
 #include <resolv.h>
+
+#ifndef PSK_ONLY
 #include <openssl/pem.h>
 #include "picotls/pembase64.h"
+#endif
+
 #include "picotls/openssl.h"
+
+#ifndef PSK_ONLY
 
 static inline void load_certificate_chain(ptls_context_t *ctx, const char *fn)
 {
@@ -80,6 +86,8 @@ static inline void load_private_key(ptls_context_t *ctx, const char *fn)
 
     ctx->sign_certificate = &sc.super;
 }
+
+#endif // PSK_ONLY
 
 struct st_util_save_ticket_t {
     ptls_save_ticket_t super;
@@ -124,6 +132,8 @@ static inline void setup_session_file(ptls_context_t *ctx, ptls_handshake_proper
     }
 }
 
+#ifndef PSK_ONLY
+
 static inline X509_STORE *init_cert_store(char const *crt_file)
 {
     int ret = 0;
@@ -158,6 +168,8 @@ static inline void setup_raw_pubkey_verify_certificate(ptls_context_t *ctx, EVP_
     ptls_openssl_raw_pubkey_init_verify_certificate(&vc, pubkey);
     ctx->verify_certificate = &vc.super;
 }
+
+#endif // PSK_ONLY
 
 struct st_util_log_event_t {
     ptls_log_event_t super;

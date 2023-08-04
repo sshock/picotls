@@ -362,12 +362,16 @@ static void usage(const char *cmd)
            "  -B                   benchmark mode for measuring sustained bandwidth. Run\n"
            "                       both endpoints with this option for some time, then kill\n"
            "                       the client. Server will report the ingress bandwidth.\n"
+#ifndef PSK_ONLY
            "  -C certificate-file  certificate chain used for client authentication\n"
            "  -c certificate-file  certificate chain used for server authentication\n"
+#endif
            "  -i file              a file to read from and send to the peer (default: stdin)\n"
            "  -I                   keep send side open after sending all data (client-only)\n"
            "  -j log-file          file to log probe events in JSON-Lines\n"
+#ifndef PSK_ONLY
            "  -k key-file          specifies the credentials for signing the certificate\n"
+#endif
            "  -K key-file          ECH private key for each ECH config provided by -E\n"
            "  -l log-file          file to log events (incl. traffic secrets)\n"
            "  -n                   negotiates the key exchange method (i.e. wait for HRR)\n"
@@ -379,13 +383,17 @@ static void usage(const char *cmd)
            "                       retry_configs from the server\n"
            "  -e                   when resuming a session, send first 8,192 bytes of input\n"
            "                       as early data\n"
+#ifndef PSK_ONLY
            "  -r public-key-file   use raw public keys (RFC 7250). When set and running as a\n"
            "                       client, the argument specifies the public keys that the\n"
            "                       server is expected to use. When running as a server, the\n"
            "                       argument is ignored.\n"
+#endif
            "  -u                   update the traffic key when handshake is complete\n"
+#ifndef PSK_ONLY
            "  -v                   verify peer using the default certificates\n"
            "  -V CA-root-file      verify peer using the CA Root File\n"
+#endif
            "  -y cipher-suite      cipher-suite to be used, e.g., aes128gcmsha256 (default:\n"
            "                       all)\n"
            "  -h                   print this help\n"
@@ -443,9 +451,15 @@ int main(int argc, char **argv)
     struct sockaddr_storage sa;
     socklen_t salen;
     int family = 0;
-    const char *raw_pub_key_file = NULL, *cert_location = NULL;
 
-    while ((ch = getopt(argc, argv, "46abBC:c:i:Ij:k:nN:es:Sr:E:K:l:y:vV:h")) != -1) {
+#ifdef PSK_ONLY
+    const char* optstring = "46abBi:Ij:nN:es:SE:K:l:y:h";
+#else
+    const char* optstring = "46abBC:c:i:Ij:k:nN:es:Sr:E:K:l:y:vV:h";
+    const char *raw_pub_key_file = NULL, *cert_location = NULL;
+#endif
+
+    while ((ch = getopt(argc, argv, optstring)) != -1) {
         switch (ch) {
         case '4':
             family = AF_INET;
@@ -467,6 +481,7 @@ int main(int argc, char **argv)
         case 'B':
             input_file = input_file_is_benchmark;
             break;
+#ifndef PSK_ONLY
         case 'C':
         case 'c':
             if (cert_location != NULL) {
@@ -476,6 +491,7 @@ int main(int argc, char **argv)
             cert_location = optarg;
             is_server = ch == 'c';
             break;
+#endif
         case 'i':
             input_file = optarg;
             break;
@@ -485,18 +501,22 @@ int main(int argc, char **argv)
         case 'j':
             setup_ptlslog(optarg);
             break;
+#ifndef PSK_ONLY
         case 'k':
             load_private_key(&ctx, optarg);
             break;
+#endif
         case 'n':
             hsprop.client.negotiate_before_key_exchange = 1;
             break;
         case 'e':
             use_early_data = 1;
             break;
+#ifndef PSK_ONLY
         case 'r':
             raw_pub_key_file = optarg;
             break;
+#endif
         case 's':
             setup_session_file(&ctx, &hsprop, optarg);
             break;
@@ -512,12 +532,14 @@ int main(int argc, char **argv)
         case 'l':
             setup_log_event(&ctx, optarg);
             break;
+#ifndef PSK_ONLY
         case 'v':
             setup_verify_certificate(&ctx, NULL);
             break;
         case 'V':
             setup_verify_certificate(&ctx, optarg);
             break;
+#endif
         case 'N': {
             ptls_key_exchange_algorithm_t *algo = NULL;
 #define MATCH(name)                                                                                                                \
@@ -574,6 +596,7 @@ int main(int argc, char **argv)
     argc -= optind;
     argv += optind;
 
+#ifndef PSK_ONLY
     if (raw_pub_key_file != NULL) {
         int is_dash = !strcmp(raw_pub_key_file, "-");
         if (is_server) {
@@ -602,8 +625,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "-C/-c and -k options must be used together\n");
         return 1;
     }
+#endif
 
     if (is_server) {
+#ifndef PSK_ONLY
         if (ctx.certificates.count == 0) {
             fprintf(stderr, "-c and -k options must be set\n");
             return 1;
@@ -619,6 +644,7 @@ int main(int argc, char **argv)
             ctx.emit_certificate = &ecc.super;
         }
 #endif
+#endif // PSK_ONLY
         setup_session_cache(&ctx);
     } else {
         /* client */

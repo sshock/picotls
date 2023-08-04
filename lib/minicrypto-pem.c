@@ -33,6 +33,8 @@
 #include "picotls/asn1.h"
 #include "picotls/pembase64.h"
 
+#ifndef PSK_ONLY
+
 /*
  * This function could be declared as static, but we want to access it
  * in the unit tests.
@@ -348,3 +350,5 @@ err:
     }
     return ret;
 }
+
+#endif

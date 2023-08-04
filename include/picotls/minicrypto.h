@@ -32,15 +32,19 @@ extern "C" {
 #define SECP256R1_PUBLIC_KEY_SIZE 65 /* including the header */
 #define SECP256R1_SHARED_SECRET_SIZE 32
 
+#ifndef PSK_ONLY
 typedef struct st_ptls_minicrypto_secp256r1sha256_sign_certificate_t {
     ptls_sign_certificate_t super;
     uint8_t key[SECP256R1_PRIVATE_KEY_SIZE];
 } ptls_minicrypto_secp256r1sha256_sign_certificate_t;
+#endif
 
 void ptls_minicrypto_random_bytes(void *buf, size_t len);
 
+#ifndef PSK_ONLY
 int ptls_minicrypto_init_secp256r1sha256_sign_certificate(ptls_minicrypto_secp256r1sha256_sign_certificate_t *self,
                                                           ptls_iovec_t key);
+#endif
 
 extern ptls_key_exchange_algorithm_t ptls_minicrypto_secp256r1, ptls_minicrypto_x25519;
 extern ptls_key_exchange_algorithm_t *ptls_minicrypto_key_exchanges[];
@@ -51,6 +55,7 @@ extern ptls_hash_algorithm_t ptls_minicrypto_sha256, ptls_minicrypto_sha384;
 extern ptls_cipher_suite_t ptls_minicrypto_aes128gcmsha256, ptls_minicrypto_aes256gcmsha384, ptls_minicrypto_chacha20poly1305sha256;
 extern ptls_cipher_suite_t *ptls_minicrypto_cipher_suites[];
 
+#ifndef PSK_ONLY
 typedef struct st_ptls_asn1_pkcs8_private_key_t {
     ptls_iovec_t vec;
     size_t algorithm_index;
@@ -62,6 +67,7 @@ typedef struct st_ptls_asn1_pkcs8_private_key_t {
 } ptls_asn1_pkcs8_private_key_t;
 
 int ptls_minicrypto_load_private_key(ptls_context_t *ctx, char const *pem_fname);
+#endif
 
 #ifdef __cplusplus
 }

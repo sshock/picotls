@@ -134,6 +134,8 @@ Exit:
     return ret;
 }
 
+#ifndef PSK_ONLY
+
 static int secp256r1sha256_sign(ptls_sign_certificate_t *_self, ptls_t *tls, ptls_async_job_t **async, uint16_t *selected_algorithm,
                                 ptls_buffer_t *outbuf, ptls_iovec_t input, const uint16_t *algorithms, size_t num_algorithms)
 {
@@ -188,6 +190,8 @@ int ptls_minicrypto_init_secp256r1sha256_sign_certificate(ptls_minicrypto_secp25
 
     return 0;
 }
+
+#endif // PSK_ONLY
 
 ptls_key_exchange_algorithm_t ptls_minicrypto_secp256r1 = {.id = PTLS_GROUP_SECP256R1,
                                                            .name = PTLS_GROUP_NAME_SECP256R1,

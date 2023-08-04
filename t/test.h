@@ -25,6 +25,8 @@
 #include "picotls.h"
 #include "picotls/ffx.h"
 
+#ifndef PSK_ONLY
+
 /* raw private key and certificate using secp256v1 */
 #define SECP256R1_PRIVATE_KEY                                                                                                      \
     "\xc1\x74\xb4\xf9\x5e\xfe\x7a\x01\x0e\xbe\x4a\xe8\x33\xb2\x36\x13\xfc\x65\xe9\x65\x91\xa8\x39\x9e\x9a\x80\xfb\xab\xd1\xff\xba" \
@@ -51,6 +53,8 @@
     "\x1d\x99\x42\xe0\xa2\xb7\x75\xbb\x14\x03\x79\x9a\xf6\x07\xd8\xa5\xab\x2b\x3a\x70\x8b\x77\x85\x70\x8a\x98\x38\x9b\x35\x09\xf6" \
     "\x62\x6b\x29\x4a\xa7\xa7\xf9\x3b\xde\xd8\xc8\x90\x57\xf2\x76\x2a\x23\x0b\x01\x68\xc6\x9a\xf2"
 
+#endif // PSK_ONLY
+
 /* test vector using RFC 9180 A.3 */
 #define ECH_CONFIG_LIST                                                                                                            \
     "\x00\x63\xfe\x0d\x00\x5f\x12\x00\x10\x00\x41\x04\xfe\x8c\x19\xce\x09\x05\x19\x1e\xbc\x29\x8a\x92\x45\x79\x25\x31\xf2\x6f\x0c" \
@@ -71,7 +75,10 @@
     "-----END PRIVATE KEY-----\n"
 
 extern ptls_context_t *ctx, *ctx_peer;
+
+#ifndef PSK_ONLY
 extern ptls_verify_certificate_t *verify_certificate;
+#endif
 
 struct st_ptls_ffx_test_variants_t {
     ptls_cipher_algorithm_t *algo;

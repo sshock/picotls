@@ -47,6 +47,8 @@
 
 #include "test.h"
 
+#ifndef PSK_ONLY
+
 #define RSA_PRIVATE_KEY                                                                                                            \
     "-----BEGIN RSA PRIVATE KEY-----\n"                                                                                            \
     "MIIEowIBAAKCAQEA5soWzSG7iyawQlHM1yaX2dUAATUkhpbg2WPFOEem7E3zYzc6\n"                                                           \
@@ -98,6 +100,8 @@
     "QxHvmJiqQ57FTFDypV0sKZRLuY9ovQ==\n"                                                                                           \
     "-----END CERTIFICATE-----\n"
 
+#endif // PSK_ONLY
+
 static void test_bf(void)
 {
 #if PTLS_OPENSSL_HAVE_BF
@@ -143,6 +147,7 @@ static void test_key_exchanges(void)
 #endif
 }
 
+#ifndef PSK_ONLY
 static void test_sign_verify(EVP_PKEY *key, const ptls_openssl_signature_scheme_t *schemes)
 {
     for (size_t i = 0; schemes[i].scheme_id != UINT16_MAX; ++i) {
@@ -160,6 +165,7 @@ static void test_sign_verify(EVP_PKEY *key, const ptls_openssl_signature_scheme_
         ptls_buffer_dispose(&sigbuf);
     }
 }
+#endif
 
 static void test_sha(void)
 {
@@ -191,6 +197,8 @@ static void test_sha(void)
         ok(memcmp(actual, all[i].expected, all[i].algo->digest_size) == 0);
     }
 }
+
+#ifndef PSK_ONLY
 
 static void test_rsa_sign(void)
 {
@@ -251,6 +259,8 @@ static X509 *x509_from_pem(const char *pem)
     return cert;
 }
 
+#endif // PSK_ONLY
+
 static ptls_key_exchange_context_t *key_from_pem(const char *pem)
 {
     BIO *bio = BIO_new_mem_buf((void *)pem, (int)strlen(pem));
@@ -265,6 +275,8 @@ static ptls_key_exchange_context_t *key_from_pem(const char *pem)
     EVP_PKEY_free(pkey);
     return ctx;
 }
+
+#ifndef PSK_ONLY
 
 static void test_cert_verify(void)
 {
@@ -325,6 +337,8 @@ static int verify_cert_cb(int ok, X509_STORE_CTX *ctx)
     return 1;
 }
 
+#endif // PSK_ONLY
+
 DEFINE_FFX_AES128_ALGORITHMS(openssl);
 #if PTLS_OPENSSL_HAVE_CHACHA20_POLY1305
 DEFINE_FFX_CHACHA20_ALGORITHMS(openssl);
@@ -374,6 +388,7 @@ Exit:
 
 #if ASYNC_TESTS
 
+#ifndef PSK_ONLY
 static ENGINE *load_engine(const char *name)
 {
     ENGINE *e;
@@ -387,6 +402,7 @@ static ENGINE *load_engine(const char *name)
 
     return e;
 }
+#endif
 
 static struct {
     struct {
@@ -405,13 +421,19 @@ static void qat_set_pending(size_t index)
 
 static void many_handshakes(void)
 {
+    ptls_handshake_properties_t hs_prop = {{{{NULL}}}};
+#ifdef PSK_ONLY
+    hs_prop.pre_shared_key.identity = ptls_iovec_init("mypsk", 1);
+    hs_prop.pre_shared_key.key = ptls_iovec_init("secret here", 11);
+#endif
+
     ptls_t *client = ptls_new(ctx, 0), *resp_sample_conn = NULL;
     ptls_buffer_t clientbuf, resp_sample;
     int ret;
 
     { /* generate ClientHello that we would be sent to all the server-side objects */
         ptls_buffer_init(&clientbuf, "", 0);
-        ret = ptls_handshake(client, &clientbuf, NULL, NULL, NULL);
+        ret = ptls_handshake(client, &clientbuf, NULL, NULL, &hs_prop);
         ok(ret == PTLS_ERROR_IN_PROGRESS);
     }
 
@@ -448,7 +470,7 @@ static void many_handshakes(void)
             uint8_t hsbuf_small[8192];
             ptls_buffer_init(&hsbuf, hsbuf_small, sizeof(hsbuf_small));
             size_t inlen = ptls_get_cipher(qat.conns[offending].tls) == NULL ? clientbuf.off : 0; /* feed CH only as first flight */
-            int hsret = ptls_handshake(qat.conns[offending].tls, &hsbuf, clientbuf.base, &inlen, NULL);
+            int hsret = ptls_handshake(qat.conns[offending].tls, &hsbuf, clientbuf.base, &inlen, &hs_prop);
             if (resp_sample_conn == qat.conns[offending].tls) {
                 ptls_buffer_pushv(&resp_sample, hsbuf.base, hsbuf.off);
             }
@@ -508,7 +530,7 @@ static void many_handshakes(void)
 
     /* confirm that the response looks okay */
     size_t resplen = resp_sample.off;
-    ok(ptls_handshake(client, &clientbuf, resp_sample.base, &resplen, NULL) == 0);
+    ok(ptls_handshake(client, &clientbuf, resp_sample.base, &resplen, &hs_prop) == 0);
 
     ptls_buffer_dispose(&clientbuf);
     ptls_buffer_dispose(&resp_sample);
@@ -523,8 +545,10 @@ Exit:
 
 int main(int argc, char **argv)
 {
+#ifndef PSK_ONLY
     ptls_openssl_sign_certificate_t openssl_sign_certificate;
     ptls_openssl_verify_certificate_t openssl_verify_certificate;
+#endif
     ptls_ech_create_opener_t ech_create_opener = {.cb = create_ech_opener};
 
     ERR_load_crypto_strings();
@@ -545,6 +569,7 @@ int main(int argc, char **argv)
 
     subtest("key-exchange", test_key_exchanges);
 
+#ifndef PSK_ONLY
     ptls_iovec_t cert;
     setup_certificate(&cert);
     setup_sign_certificate(&openssl_sign_certificate);
@@ -552,33 +577,44 @@ int main(int argc, char **argv)
     X509_STORE_set_verify_cb(cert_store, verify_cert_cb);
     ptls_openssl_init_verify_certificate(&openssl_verify_certificate, cert_store);
     /* we should call X509_STORE_free on OpenSSL 1.1 or in prior versions decrement refount then call _free */
+#endif
+
     ptls_context_t openssl_ctx = {.random_bytes = ptls_openssl_random_bytes,
                                   .get_time = &ptls_get_time,
                                   .key_exchanges = ptls_openssl_key_exchanges,
                                   .cipher_suites = ptls_openssl_cipher_suites,
                                   .tls12_cipher_suites = ptls_openssl_tls12_cipher_suites,
+#ifndef PSK_ONLY
                                   .certificates = {&cert, 1},
+#endif
                                   .ech = {.client = {.ciphers = ptls_openssl_hpke_cipher_suites, .kems = ptls_openssl_hpke_kems},
                                           .server = {.create_opener = &ech_create_opener,
                                                      .retry_configs = {(uint8_t *)ECH_CONFIG_LIST, sizeof(ECH_CONFIG_LIST) - 1}}},
-                                  .sign_certificate = &openssl_sign_certificate.super};
+#ifndef PSK_ONLY
+                                  .sign_certificate = &openssl_sign_certificate.super
+#endif
+    };
     assert(openssl_ctx.cipher_suites[0]->hash->digest_size == 48); /* sha384 */
     ptls_context_t openssl_ctx_sha256only = openssl_ctx;
     ++openssl_ctx_sha256only.cipher_suites;
     assert(openssl_ctx_sha256only.cipher_suites[0]->hash->digest_size == 32); /* sha256 */
 
     ctx = ctx_peer = &openssl_ctx;
+#ifndef PSK_ONLY
     verify_certificate = &openssl_verify_certificate.super;
+#endif
     ADD_FFX_AES128_ALGORITHMS(openssl);
 #if PTLS_OPENSSL_HAVE_CHACHA20_POLY1305
     ADD_FFX_CHACHA20_ALGORITHMS(openssl);
 #endif
 
     subtest("sha", test_sha);
+#ifndef PSK_ONLY
     subtest("rsa-sign", test_rsa_sign);
     subtest("ecdsa-sign", test_ecdsa_sign);
     subtest("ed25519-sign", test_ed25519_sign);
     subtest("cert-verify", test_cert_verify);
+#endif
     subtest("picotls", test_picotls);
 
     ctx = ctx_peer = &openssl_ctx_sha256only;
@@ -592,19 +628,30 @@ int main(int argc, char **argv)
     ctx_peer = &openssl_ctx_sha256only;
     subtest("picotls", test_picotls);
 
+#ifndef PSK_ONLY
     ptls_minicrypto_secp256r1sha256_sign_certificate_t minicrypto_sign_certificate;
     ptls_iovec_t minicrypto_certificate = ptls_iovec_init(SECP256R1_CERTIFICATE, sizeof(SECP256R1_CERTIFICATE) - 1);
     ptls_minicrypto_init_secp256r1sha256_sign_certificate(
         &minicrypto_sign_certificate, ptls_iovec_init(SECP256R1_PRIVATE_KEY, sizeof(SECP256R1_PRIVATE_KEY) - 1));
+#endif
     ptls_context_t minicrypto_ctx = {ptls_minicrypto_random_bytes,
                                      &ptls_get_time,
                                      ptls_minicrypto_key_exchanges,
                                      ptls_minicrypto_cipher_suites,
+#ifdef PSK_ONLY
+                                     {NULL, 0},
+#else
                                      {&minicrypto_certificate, 1},
+#endif
                                      {{NULL}},
                                      NULL,
                                      NULL,
-                                     &minicrypto_sign_certificate.super};
+#ifdef PSK_ONLY
+                                     NULL
+#else
+                                     &minicrypto_sign_certificate.super
+#endif
+    };
     ctx = &openssl_ctx;
     ctx_peer = &minicrypto_ctx;
     subtest("vs. minicrypto", test_picotls);
@@ -623,8 +670,11 @@ int main(int argc, char **argv)
     openssl_ctx.cipher_suites = fast_cipher;
     ctx = &openssl_ctx;
     ctx_peer = &openssl_ctx;
+#ifndef PSK_ONLY
     openssl_sign_certificate.async = 0;
+#endif
     subtest("many-handshakes-non-async", many_handshakes);
+#ifndef PSK_ONLY
     openssl_sign_certificate.async = 0;
     subtest("many-handshakes-async", many_handshakes);
     { /* qatengine should be tested at last, because we do not have the code to unload or un-default it */
@@ -639,7 +689,8 @@ int main(int argc, char **argv)
             note("%s not found", engine_name);
         }
     }
-#endif
+#endif // PSK_ONLY
+#endif // ASYNC_TESTS
 
     int ret = done_testing();
 #if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L

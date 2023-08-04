@@ -44,9 +44,12 @@
 #include <openssl/objects.h>
 #include <openssl/rand.h>
 #include <openssl/rsa.h>
+#include <openssl/sha.h>
+#ifndef PSK_ONLY
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include <openssl/x509_vfy.h>
+#endif
 #include "picotls.h"
 #include "picotls/openssl.h"
 #ifdef OPENSSL_IS_BORINGSSL
@@ -96,6 +99,8 @@ static int EVP_CIPHER_CTX_reset(EVP_CIPHER_CTX *ctx)
 }
 
 #endif
+
+#ifndef PSK_ONLY
 
 static const ptls_openssl_signature_scheme_t rsa_signature_schemes[] = {{PTLS_SIGNATURE_RSA_PSS_RSAE_SHA256, EVP_sha256},
                                                                                   {PTLS_SIGNATURE_RSA_PSS_RSAE_SHA384, EVP_sha384},
@@ -189,6 +194,8 @@ const ptls_openssl_signature_scheme_t *ptls_openssl_select_signature_scheme(cons
 
     return NULL;
 }
+
+#endif // PSK_ONLY
 
 void ptls_openssl_random_bytes(void *buf, size_t len)
 {
@@ -735,6 +742,8 @@ int ptls_openssl_create_key_exchange(ptls_key_exchange_context_t **ctx, EVP_PKEY
     }
 }
 
+#ifndef PSK_ONLY
+
 #if PTLS_OPENSSL_HAVE_ASYNC
 
 struct async_sign_ctx {
@@ -918,6 +927,8 @@ Exit:
         EVP_MD_CTX_destroy(ctx);
     return ret;
 }
+
+#endif // PSK_ONLY
 
 struct cipher_context_t {
     ptls_cipher_context_t super;
@@ -1332,6 +1343,8 @@ ptls_define_hash(sha384, SHA512_CTX, SHA384_Init, SHA384_Update, _sha384_final);
 #define _sha512_final(ctx, md) SHA512_Final((md), (ctx))
 ptls_define_hash(sha512, SHA512_CTX, SHA512_Init, SHA512_Update, _sha512_final);
 
+#ifndef PSK_ONLY
+
 static int sign_certificate(ptls_sign_certificate_t *_self, ptls_t *tls, ptls_async_job_t **async, uint16_t *selected_algorithm,
                             ptls_buffer_t *outbuf, ptls_iovec_t input, const uint16_t *algorithms, size_t num_algorithms)
 {
@@ -1729,6 +1742,8 @@ void ptls_openssl_raw_pubkey_dispose_verify_certificate(ptls_openssl_raw_pubkey_
 {
     EVP_PKEY_free(self->expected_pubkey);
 }
+
+#endif // PSK_ONLY
 
 #define TICKET_LABEL_SIZE 16
 #define TICKET_IV_SIZE EVP_MAX_IV_LENGTH

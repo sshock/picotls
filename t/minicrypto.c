@@ -40,6 +40,8 @@ static void test_x25519_key_exchange(void)
     test_key_exchange(&ptls_minicrypto_x25519, &ptls_minicrypto_x25519);
 }
 
+#ifndef PSK_ONLY
+
 static void test_secp256r1_sign(void)
 {
     const char *msg = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef";
@@ -61,10 +63,13 @@ static void test_secp256r1_sign(void)
     ptls_buffer_dispose(&sigbuf);
 }
 
+#endif
+
 static void test_hrr(void)
 {
     ptls_key_exchange_algorithm_t *client_keyex[] = {&ptls_minicrypto_x25519, &ptls_minicrypto_secp256r1, NULL};
     ptls_context_t client_ctx = {ptls_minicrypto_random_bytes, &ptls_get_time, client_keyex, ptls_minicrypto_cipher_suites};
+    ptls_handshake_properties_t client_hs_prop = {{{{NULL}}}}, server_hs_prop = {{{{NULL}}}};
     ptls_t *client, *server;
     ptls_buffer_t cbuf, sbuf, decbuf;
     uint8_t cbuf_small[16384], sbuf_small[16384], decbuf_small[16384];
@@ -80,12 +85,22 @@ static void test_hrr(void)
     ptls_buffer_init(&sbuf, sbuf_small, sizeof(sbuf_small));
     ptls_buffer_init(&decbuf, decbuf_small, sizeof(decbuf_small));
 
-    ret = ptls_handshake(client, &cbuf, NULL, NULL, NULL);
+#ifdef PSK_ONLY
+    client_hs_prop.pre_shared_key.identity = ptls_iovec_init("mypsk", 1);
+    client_hs_prop.pre_shared_key.key = ptls_iovec_init("secret here", 11);
+    server_hs_prop.pre_shared_key = client_hs_prop.pre_shared_key;
+#endif
+
+    ret = ptls_handshake(client, &cbuf, NULL, NULL, &client_hs_prop);
     ok(ret == PTLS_ERROR_IN_PROGRESS);
 
     consumed = cbuf.off;
-    ret = ptls_handshake(server, &sbuf, cbuf.base, &consumed, NULL);
+    ret = ptls_handshake(server, &sbuf, cbuf.base, &consumed, &server_hs_prop);
+#ifdef PSK_ONLY
+    ok(ret == 0);
+#else
     ok(ret == PTLS_ERROR_IN_PROGRESS);
+#endif
     ok(consumed == cbuf.off);
     cbuf.off = 0;
 
@@ -93,28 +108,38 @@ static void test_hrr(void)
     ok(sbuf.base[5] == 2 /* PTLS_HANDSHAKE_TYPE_SERVER_HELLO (RETRY_REQUEST) */);
 
     consumed = sbuf.off;
-    ret = ptls_handshake(client, &cbuf, sbuf.base, &consumed, NULL);
+    ret = ptls_handshake(client, &cbuf, sbuf.base, &consumed, &client_hs_prop);
+#ifdef PSK_ONLY
+    ok(ret == 0);
+#else
     ok(ret == PTLS_ERROR_IN_PROGRESS);
+#endif
     ok(consumed == sbuf.off);
     sbuf.off = 0;
 
+#ifndef PSK_ONLY
     ok(cbuf.off >= 5 + 4);
     ok(cbuf.base[5] == 1 /* PTLS_HANDSHAKE_TYPE_CLIENT_HELLO */);
+#endif
 
     consumed = cbuf.off;
-    ret = ptls_handshake(server, &sbuf, cbuf.base, &consumed, NULL);
+    ret = ptls_handshake(server, &sbuf, cbuf.base, &consumed, &server_hs_prop);
     ok(ret == 0);
     ok(consumed == cbuf.off);
     cbuf.off = 0;
 
+#ifndef PSK_ONLY
     ok(sbuf.off >= 5 + 4);
     ok(sbuf.base[5] == 2 /* PTLS_HANDSHAKE_TYPE_SERVER_HELLO */);
+#endif
 
+#ifndef PSK_ONLY
     consumed = sbuf.off;
-    ret = ptls_handshake(client, &cbuf, sbuf.base, &consumed, NULL);
+    ret = ptls_handshake(client, &cbuf, sbuf.base, &consumed, &client_hs_prop);
     ok(ret == 0);
     ok(consumed == sbuf.off);
     sbuf.off = 0;
+#endif
 
     ret = ptls_send(client, &cbuf, "hello world", 11);
     ok(ret == 0);
@@ -142,6 +167,7 @@ int main(int argc, char **argv)
 {
     subtest("secp256r1", test_secp256r1_key_exchange);
     subtest("x25519", test_x25519_key_exchange);
+#ifndef PSK_ONLY
     subtest("secp256r1-sign", test_secp256r1_sign);
 
     ptls_iovec_t cert = ptls_iovec_init(SECP256R1_CERTIFICATE, sizeof(SECP256R1_CERTIFICATE) - 1);
@@ -149,16 +175,26 @@ int main(int argc, char **argv)
     ptls_minicrypto_secp256r1sha256_sign_certificate_t sign_certificate;
     ptls_minicrypto_init_secp256r1sha256_sign_certificate(&sign_certificate,
                                                           ptls_iovec_init(SECP256R1_PRIVATE_KEY, SECP256R1_PRIVATE_KEY_SIZE));
+#endif
 
     ptls_context_t ctxbuf = {ptls_minicrypto_random_bytes,
                              &ptls_get_time,
                              ptls_minicrypto_key_exchanges,
                              ptls_minicrypto_cipher_suites,
+#ifdef PSK_ONLY
+                             {NULL, 0},
+#else
                              {&cert, 1},
+#endif
                              {{NULL}},
                              NULL,
                              NULL,
-                             &sign_certificate.super};
+#ifdef PSK_ONLY
+                             NULL
+#else
+                             &sign_certificate.super
+#endif
+    };
     ctx = ctx_peer = &ctxbuf;
     ADD_FFX_AES128_ALGORITHMS(minicrypto);
     ADD_FFX_CHACHA20_ALGORITHMS(minicrypto);

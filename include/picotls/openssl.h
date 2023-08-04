@@ -29,7 +29,9 @@ extern "C" {
 #include <openssl/opensslv.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
+#ifndef PSK_ONLY
 #include <openssl/x509.h>
+#endif
 #include <openssl/opensslconf.h>
 #include "../picotls.h"
 
@@ -127,6 +129,8 @@ void ptls_openssl_random_bytes(void *buf, size_t len);
  */
 int ptls_openssl_create_key_exchange(ptls_key_exchange_context_t **ctx, EVP_PKEY *pkey);
 
+#ifndef PSK_ONLY
+
 typedef struct st_ptls_openssl_signature_scheme_t {
     uint16_t scheme_id;
     const EVP_MD *(*scheme_md)(void);
@@ -187,6 +191,8 @@ X509_STORE *ptls_openssl_create_default_certificate_store(void);
 
 int ptls_openssl_raw_pubkey_init_verify_certificate(ptls_openssl_raw_pubkey_verify_certificate_t *self, EVP_PKEY *pubkey);
 void ptls_openssl_raw_pubkey_dispose_verify_certificate(ptls_openssl_raw_pubkey_verify_certificate_t *self);
+
+#endif // PSK_ONLY
 
 int ptls_openssl_encrypt_ticket(ptls_buffer_t *dst, ptls_iovec_t src,
                                 int (*cb)(unsigned char *, unsigned char *, EVP_CIPHER_CTX *, HMAC_CTX *, int));

@@ -58,9 +58,12 @@
 #define PTLS_EXTENSION_TYPE_SERVER_NAME 0
 #define PTLS_EXTENSION_TYPE_STATUS_REQUEST 5
 #define PTLS_EXTENSION_TYPE_SUPPORTED_GROUPS 10
+// when PSK_ONLY, we'll error if this extension is encountered
 #define PTLS_EXTENSION_TYPE_SIGNATURE_ALGORITHMS 13
 #define PTLS_EXTENSION_TYPE_ALPN 16
+// when PSK_ONLY, we'll error if this extension is encountered
 #define PTLS_EXTENSION_TYPE_SERVER_CERTIFICATE_TYPE 20
+// when PSK_ONLY, we'll error if this extension is encountered
 #define PTLS_EXTENSION_TYPE_COMPRESS_CERTIFICATE 27
 #define PTLS_EXTENSION_TYPE_PRE_SHARED_KEY 41
 #define PTLS_EXTENSION_TYPE_EARLY_DATA 42
@@ -81,10 +84,12 @@
 
 static const char ech_info_prefix[8] = "tls ech";
 
+#ifndef PSK_ONLY
 #define PTLS_SERVER_CERTIFICATE_VERIFY_CONTEXT_STRING "TLS 1.3, server CertificateVerify"
 #define PTLS_CLIENT_CERTIFICATE_VERIFY_CONTEXT_STRING "TLS 1.3, client CertificateVerify"
 #define PTLS_MAX_CERTIFICATE_VERIFY_SIGNDATA_SIZE                                                                                  \
     (64 + sizeof(PTLS_SERVER_CERTIFICATE_VERIFY_CONTEXT_STRING) + PTLS_MAX_DIGEST_SIZE * 2)
+#endif
 
 #define PTLS_EARLY_DATA_MAX_DELAY 10000 /* max. RTT (in msec) to permit early data */
 
@@ -144,6 +149,7 @@ struct st_ptls_record_message_emitter_t {
     size_t rec_start;
 };
 
+#ifndef PSK_ONLY
 struct st_ptls_signature_algorithms_t {
     uint16_t list[16]; /* expand? */
     size_t count;
@@ -156,6 +162,7 @@ struct st_ptls_certificate_request_t {
     ptls_iovec_t context;
     struct st_ptls_signature_algorithms_t signature_algorithms;
 };
+#endif
 
 struct st_decoded_ech_config_t {
     uint8_t id;
@@ -203,15 +210,19 @@ struct st_ptls_t {
         PTLS_STATE_CLIENT_EXPECT_SERVER_HELLO,
         PTLS_STATE_CLIENT_EXPECT_SECOND_SERVER_HELLO,
         PTLS_STATE_CLIENT_EXPECT_ENCRYPTED_EXTENSIONS,
+#ifndef PSK_ONLY
         PTLS_STATE_CLIENT_EXPECT_CERTIFICATE_REQUEST_OR_CERTIFICATE,
         PTLS_STATE_CLIENT_EXPECT_CERTIFICATE,
         PTLS_STATE_CLIENT_EXPECT_CERTIFICATE_VERIFY,
+#endif
         PTLS_STATE_CLIENT_EXPECT_FINISHED,
         PTLS_STATE_SERVER_EXPECT_CLIENT_HELLO,
         PTLS_STATE_SERVER_EXPECT_SECOND_CLIENT_HELLO,
+#ifndef PSK_ONLY
         PTLS_STATE_SERVER_GENERATING_CERTIFICATE_VERIFY,
         PTLS_STATE_SERVER_EXPECT_CERTIFICATE,
         PTLS_STATE_SERVER_EXPECT_CERTIFICATE_VERIFY,
+#endif
         /* ptls_send can be called if the state is below here */
         PTLS_STATE_SERVER_EXPECT_END_OF_EARLY_DATA,
         PTLS_STATE_SERVER_EXPECT_FINISHED,
@@ -288,7 +299,9 @@ struct st_ptls_t {
              * if 1-RTT write key is active
              */
             unsigned using_early_data : 1;
+#ifndef PSK_ONLY
             struct st_ptls_certificate_request_t certificate_request;
+#endif
         } client;
         struct {
             uint8_t pending_traffic_secret[PTLS_MAX_DIGEST_SIZE];
@@ -297,6 +310,7 @@ struct st_ptls_t {
             ptls_async_job_t *async_job;
         } server;
     };
+#ifndef PSK_ONLY
     /**
      * certificate verify; will be used by the client and the server (if require_client_authentication is set)
      */
@@ -304,6 +318,7 @@ struct st_ptls_t {
         int (*cb)(void *verify_ctx, uint16_t algo, ptls_iovec_t data, ptls_iovec_t signature);
         void *verify_ctx;
     } certificate_verify;
+#endif
     /**
      * handshake traffic secret to be commisioned (an array of `uint8_t [PTLS_MAX_DIGEST_SIZE]` or NULL)
      */
@@ -328,7 +343,10 @@ struct st_ptls_client_hello_psk_t {
 };
 
 #define MAX_UNKNOWN_EXTENSIONS 16
+
+#ifndef PSK_ONLY
 #define MAX_CERTIFICATE_TYPES 8
+#endif
 
 struct st_ptls_client_hello_t {
     uint16_t legacy_version;
@@ -342,16 +360,20 @@ struct st_ptls_client_hello_t {
     ptls_iovec_t cipher_suites;
     ptls_iovec_t negotiated_groups;
     ptls_iovec_t key_shares;
+#ifndef PSK_ONLY
     struct st_ptls_signature_algorithms_t signature_algorithms;
+#endif
     ptls_iovec_t server_name;
     struct {
         ptls_iovec_t list[16];
         size_t count;
     } alpn;
+#ifndef PSK_ONLY
     struct {
         uint16_t list[16];
         size_t count;
     } cert_compression_algos;
+#endif
     struct {
         ptls_iovec_t all;
         ptls_iovec_t tbs;
@@ -359,10 +381,12 @@ struct st_ptls_client_hello_t {
         ptls_iovec_t signature;
         unsigned sent_key_share : 1;
     } cookie;
+#ifndef PSK_ONLY
     struct {
         uint8_t list[MAX_CERTIFICATE_TYPES];
         size_t count;
     } server_certificate_types;
+#endif
     unsigned status_request : 1;
     /**
      * ECH: payload.base != NULL indicates that the extension was received
@@ -425,8 +449,12 @@ static const uint8_t zeroes_of_max_digest_size[PTLS_MAX_DIGEST_SIZE] = {0};
 
 static ptls_aead_context_t *new_aead(ptls_aead_algorithm_t *aead, ptls_hash_algorithm_t *hash, int is_enc, const void *secret,
                                      ptls_iovec_t hash_value, const char *label_prefix);
-static int server_finish_handshake(ptls_t *tls, ptls_message_emitter_t *emitter, int send_cert_verify,
-                                   struct st_ptls_signature_algorithms_t *signature_algorithms);
+static int server_finish_handshake(ptls_t *tls, ptls_message_emitter_t *emitter
+#ifndef PSK_ONLY
+                                   , int send_cert_verify
+                                   , struct st_ptls_signature_algorithms_t *signature_algorithms
+#endif
+                                   );
 
 static int is_supported_version(uint16_t v)
 {
@@ -1759,6 +1787,7 @@ Exit:
     return ret;
 }
 
+#ifndef PSK_ONLY
 static size_t build_certificate_verify_signdata(uint8_t *data, ptls_key_schedule_t *sched, const char *context_string)
 {
     size_t datalen = 0;
@@ -1773,6 +1802,7 @@ static size_t build_certificate_verify_signdata(uint8_t *data, ptls_key_schedule
 
     return datalen;
 }
+#endif
 
 static int calc_verify_data(void *output, ptls_key_schedule_t *sched, const void *secret)
 {
@@ -1944,6 +1974,8 @@ Exit:
     return ret;
 }
 
+#ifndef PSK_ONLY
+
 static int push_signature_algorithms(ptls_verify_certificate_t *vc, ptls_buffer_t *sendbuf)
 {
     /* The list sent when verify callback is not registered */
@@ -1979,6 +2011,8 @@ static int decode_signature_algorithms(struct st_ptls_signature_algorithms_t *sa
 Exit:
     return ret;
 }
+
+#endif // PSK_ONLY
 
 static int select_cipher(ptls_cipher_suite_t **selected, ptls_cipher_suite_t **candidates, const uint8_t *src,
                          const uint8_t *const end, int server_preference, int server_chacha_priority, uint16_t csid_for_psk)
@@ -2208,6 +2242,7 @@ static int encode_client_hello(ptls_context_t *ctx, ptls_buffer_t *sendbuf, enum
                     });
                 });
             }
+#ifndef PSK_ONLY
             if (ctx->decompress_certificate != NULL) {
                 buffer_push_extension(sendbuf, PTLS_EXTENSION_TYPE_COMPRESS_CERTIFICATE, {
                     ptls_buffer_push_block(sendbuf, 1, {
@@ -2218,6 +2253,7 @@ static int encode_client_hello(ptls_context_t *ctx, ptls_buffer_t *sendbuf, enum
                     });
                 });
             }
+#endif
             buffer_push_extension(sendbuf, PTLS_EXTENSION_TYPE_SUPPORTED_VERSIONS, {
                 ptls_buffer_push_block(sendbuf, 1, {
                     size_t i;
@@ -2225,10 +2261,12 @@ static int encode_client_hello(ptls_context_t *ctx, ptls_buffer_t *sendbuf, enum
                         ptls_buffer_push16(sendbuf, supported_versions[i]);
                 });
             });
+#ifndef PSK_ONLY
             buffer_push_extension(sendbuf, PTLS_EXTENSION_TYPE_SIGNATURE_ALGORITHMS, {
                 if ((ret = push_signature_algorithms(ctx->verify_certificate, sendbuf)) != 0)
                     goto Exit;
             });
+#endif
             if (ctx->key_exchanges != NULL) {
                 buffer_push_extension(sendbuf, PTLS_EXTENSION_TYPE_SUPPORTED_GROUPS, {
                     ptls_key_exchange_algorithm_t **algo = ctx->key_exchanges;
@@ -2243,11 +2281,13 @@ static int encode_client_hello(ptls_context_t *ctx, ptls_buffer_t *sendbuf, enum
                     ptls_buffer_push_block(sendbuf, 2, { ptls_buffer_pushv(sendbuf, cookie->base, cookie->len); });
                 });
             }
+#ifndef PSK_ONLY
             if (ctx->use_raw_public_keys) {
                 buffer_push_extension(sendbuf, PTLS_EXTENSION_TYPE_SERVER_CERTIFICATE_TYPE, {
                     ptls_buffer_push_block(sendbuf, 1, { ptls_buffer_push(sendbuf, PTLS_CERTIFICATE_TYPE_RAW_PUBLIC_KEY); });
                 });
             }
+#endif
             if ((ret = push_additional_extensions(properties, sendbuf)) != 0)
                 goto Exit;
             if (ctx->save_ticket != NULL || resumption_secret.base != NULL) {
@@ -2884,7 +2924,9 @@ static int client_handle_encrypted_extensions(ptls_t *tls, ptls_iovec_t message,
     static const ptls_raw_extension_t no_unknown_extensions = {UINT16_MAX};
     ptls_raw_extension_t *unknown_extensions = (ptls_raw_extension_t *)&no_unknown_extensions;
     int ret, skip_early_data = 1;
+#ifndef PSK_ONLY
     uint8_t server_offered_cert_type = PTLS_CERTIFICATE_TYPE_X509;
+#endif
 
     decode_extensions(src, end, PTLS_HANDSHAKE_TYPE_ENCRYPTED_EXTENSIONS, &type, {
         if (tls->ctx->on_extension != NULL &&
@@ -2927,12 +2969,17 @@ static int client_handle_encrypted_extensions(ptls_t *tls, ptls_iovec_t message,
             skip_early_data = 0;
             break;
         case PTLS_EXTENSION_TYPE_SERVER_CERTIFICATE_TYPE:
+#ifdef PSK_ONLY
+            ret = PTLS_ALERT_ILLEGAL_PARAMETER;
+            goto Exit;
+#else
             if (end - src != 1) {
                 ret = PTLS_ALERT_DECODE_ERROR;
                 goto Exit;
             }
             server_offered_cert_type = *src;
             src = end;
+#endif
             break;
         case PTLS_EXTENSION_TYPE_ENCRYPTED_CLIENT_HELLO: {
             /* accept retry_configs only if we offered ECH but rejected */
@@ -2972,11 +3019,13 @@ static int client_handle_encrypted_extensions(ptls_t *tls, ptls_iovec_t message,
         src = end;
     });
 
+#ifndef PSK_ONLY
     if (server_offered_cert_type !=
         (tls->ctx->use_raw_public_keys ? PTLS_CERTIFICATE_TYPE_RAW_PUBLIC_KEY : PTLS_CERTIFICATE_TYPE_X509)) {
         ret = PTLS_ALERT_UNSUPPORTED_CERTIFICATE;
         goto Exit;
     }
+#endif
 
     if (tls->client.using_early_data) {
         if (skip_early_data)
@@ -2988,8 +3037,16 @@ static int client_handle_encrypted_extensions(ptls_t *tls, ptls_iovec_t message,
         goto Exit;
 
     ptls__key_schedule_update_hash(tls->key_schedule, message.base, message.len, 0);
+#ifdef PSK_ONLY
+    if (!tls->is_psk_handshake) {
+        ret = PTLS_ALERT_ILLEGAL_PARAMETER;
+        goto Exit;
+    }
+    tls->state = PTLS_STATE_CLIENT_EXPECT_FINISHED;
+#else
     tls->state =
         tls->is_psk_handshake ? PTLS_STATE_CLIENT_EXPECT_FINISHED : PTLS_STATE_CLIENT_EXPECT_CERTIFICATE_REQUEST_OR_CERTIFICATE;
+#endif
     ret = PTLS_ERROR_IN_PROGRESS;
 
 Exit:
@@ -2997,6 +3054,8 @@ Exit:
         free(unknown_extensions);
     return ret;
 }
+
+#ifndef PSK_ONLY
 
 static int decode_certificate_request(ptls_t *tls, struct st_ptls_certificate_request_t *cr, const uint8_t *src,
                                       const uint8_t *const end)
@@ -3383,6 +3442,8 @@ static int server_handle_certificate_verify(ptls_t *tls, ptls_iovec_t message)
     return ret;
 }
 
+#endif // PSK_ONLY
+
 static int client_handle_finished(ptls_t *tls, ptls_message_emitter_t *emitter, ptls_iovec_t message)
 {
     uint8_t send_secret[PTLS_MAX_DIGEST_SIZE];
@@ -3415,6 +3476,7 @@ static int client_handle_finished(ptls_t *tls, ptls_message_emitter_t *emitter, 
     if ((ret = push_change_cipher_spec(tls, emitter)) != 0)
         goto Exit;
 
+#ifndef PSK_ONLY
     if (!alert_ech_required && tls->client.certificate_request.context.base != NULL) {
         if ((ret = send_certificate(tls, emitter, &tls->client.certificate_request.signature_algorithms,
                                     tls->client.certificate_request.context, 0, NULL, 0)) == 0)
@@ -3425,6 +3487,7 @@ static int client_handle_finished(ptls_t *tls, ptls_message_emitter_t *emitter, 
         if (ret != 0)
             goto Exit;
     }
+#endif
 
     ret = send_finished(tls, emitter);
 
@@ -3637,6 +3700,10 @@ static int decode_client_hello(ptls_context_t *ctx, struct st_ptls_client_hello_
             });
             break;
         case PTLS_EXTENSION_TYPE_SERVER_CERTIFICATE_TYPE:
+#ifdef PSK_ONLY
+            ret = PTLS_ALERT_ILLEGAL_PARAMETER;
+            goto Exit;
+#else
             ptls_decode_block(src, end, 1, {
                 size_t list_size = end - src;
 
@@ -3652,8 +3719,13 @@ static int decode_client_hello(ptls_context_t *ctx, struct st_ptls_client_hello_
                     src++;
                 } while (src != end);
             });
+#endif
             break;
         case PTLS_EXTENSION_TYPE_COMPRESS_CERTIFICATE:
+#ifdef PSK_ONLY
+            ret = PTLS_ALERT_ILLEGAL_PARAMETER;
+            goto Exit;
+#else
             ptls_decode_block(src, end, 1, {
                 do {
                     uint16_t id;
@@ -3663,13 +3735,19 @@ static int decode_client_hello(ptls_context_t *ctx, struct st_ptls_client_hello_
                         ch->cert_compression_algos.list[ch->cert_compression_algos.count++] = id;
                 } while (src != end);
             });
+#endif
             break;
         case PTLS_EXTENSION_TYPE_SUPPORTED_GROUPS:
             ch->negotiated_groups = ptls_iovec_init(src, end - src);
             break;
         case PTLS_EXTENSION_TYPE_SIGNATURE_ALGORITHMS:
+#ifdef PSK_ONLY
+            ret = PTLS_ALERT_ILLEGAL_PARAMETER;
+            goto Exit;
+#else
             if ((ret = decode_signature_algorithms(&ch->signature_algorithms, &src, end)) != 0)
                 goto Exit;
+#endif
             break;
         case PTLS_EXTENSION_TYPE_KEY_SHARE:
             ch->key_shares = ptls_iovec_init(src, end - src);
@@ -3955,9 +4033,12 @@ Exit:
  * is to not miss setting them as we add new parameters to the struct. */
 static inline int call_on_client_hello_cb(ptls_t *tls, ptls_iovec_t server_name, ptls_iovec_t raw_message,
                                           ptls_iovec_t cipher_suites, ptls_iovec_t *alpns, size_t num_alpns,
+#ifndef PSK_ONLY
                                           const uint16_t *sig_algos, size_t num_sig_algos, const uint16_t *cert_comp_algos,
                                           size_t num_cert_comp_algos, const uint8_t *server_cert_types,
-                                          size_t num_server_cert_types, int incompatible_version)
+                                          size_t num_server_cert_types,
+#endif
+                                          int incompatible_version)
 {
     if (tls->ctx->on_client_hello == NULL)
         return 0;
@@ -3966,9 +4047,15 @@ static inline int call_on_client_hello_cb(ptls_t *tls, ptls_iovec_t server_name,
                                                 raw_message,
                                                 cipher_suites,
                                                 {alpns, num_alpns},
+#ifdef PSK_ONLY
+                                                {NULL, 0},
+                                                {NULL, 0},
+                                                {NULL, 0},
+#else
                                                 {sig_algos, num_sig_algos},
                                                 {cert_comp_algos, num_cert_comp_algos},
                                                 {server_cert_types, num_server_cert_types},
+#endif
                                                 incompatible_version};
     return tls->ctx->on_client_hello->cb(tls->ctx->on_client_hello, tls, &params);
 }
@@ -3992,7 +4079,11 @@ static int check_client_hello_constraints(ptls_context_t *ctx, struct st_ptls_cl
         if (!is_second_flight) {
             int ret;
             if ((ret = call_on_client_hello_cb(tls_cbarg, ch->server_name, raw_message, ch->cipher_suites, ch->alpn.list,
-                                               ch->alpn.count, NULL, 0, NULL, 0, NULL, 0, 1)) != 0)
+                                               ch->alpn.count,
+#ifndef PSK_ONLY
+                                               NULL, 0, NULL, 0, NULL, 0,
+#endif
+                                               1)) != 0)
                 return ret;
         }
         return PTLS_ALERT_PROTOCOL_VERSION;
@@ -4214,6 +4305,7 @@ static int calc_cookie_signature(ptls_t *tls, ptls_handshake_properties_t *prope
     return 0;
 }
 
+#ifndef PSK_ONLY
 static int certificate_type_exists(uint8_t *list, size_t count, uint8_t desired_type)
 {
     /* empty type list means that we default to x509 */
@@ -4225,6 +4317,7 @@ static int certificate_type_exists(uint8_t *list, size_t count, uint8_t desired_
     }
     return 0;
 }
+#endif
 
 static int server_handle_hello(ptls_t *tls, ptls_message_emitter_t *emitter, ptls_iovec_t message,
                                ptls_handshake_properties_t *properties)
@@ -4396,16 +4489,21 @@ static int server_handle_hello(ptls_t *tls, ptls_message_emitter_t *emitter, ptl
         if (ch->server_name.base != NULL)
             server_name = ch->server_name;
         if ((ret = call_on_client_hello_cb(tls, server_name, message, ch->cipher_suites, ch->alpn.list, ch->alpn.count,
+#ifndef PSK_ONLY
                                            ch->signature_algorithms.list, ch->signature_algorithms.count,
                                            ch->cert_compression_algos.list, ch->cert_compression_algos.count,
-                                           ch->server_certificate_types.list, ch->server_certificate_types.count, 0)) != 0)
+                                           ch->server_certificate_types.list, ch->server_certificate_types.count,
+#endif
+                                           0)) != 0)
             goto Exit;
+#ifndef PSK_ONLY
         if (!certificate_type_exists(ch->server_certificate_types.list, ch->server_certificate_types.count,
                                      tls->ctx->use_raw_public_keys ? PTLS_CERTIFICATE_TYPE_RAW_PUBLIC_KEY
                                                                    : PTLS_CERTIFICATE_TYPE_X509)) {
             ret = PTLS_ALERT_UNSUPPORTED_CERTIFICATE;
             goto Exit;
         }
+#endif
     } else {
         if (ch->psk.early_data_indication) {
             ret = PTLS_ALERT_DECODE_ERROR;
@@ -4725,10 +4823,12 @@ static int server_handle_hello(ptls_t *tls, ptls_message_emitter_t *emitter, ptl
                  * The "extension_data" field of this extension SHALL be empty. (RFC 6066 section 3) */
                 buffer_push_extension(sendbuf, PTLS_EXTENSION_TYPE_SERVER_NAME, {});
             }
+#ifndef PSK_ONLY
             if (tls->ctx->use_raw_public_keys) {
                 buffer_push_extension(sendbuf, PTLS_EXTENSION_TYPE_SERVER_CERTIFICATE_TYPE,
                                       { ptls_buffer_push(sendbuf, PTLS_CERTIFICATE_TYPE_RAW_PUBLIC_KEY); });
             }
+#endif
             if (tls->negotiated_protocol != NULL) {
                 buffer_push_extension(sendbuf, PTLS_EXTENSION_TYPE_ALPN, {
                     ptls_buffer_push_block(sendbuf, 2, {
@@ -4752,6 +4852,10 @@ static int server_handle_hello(ptls_t *tls, ptls_message_emitter_t *emitter, ptl
     });
 
     if (mode == HANDSHAKE_MODE_FULL) {
+#ifdef PSK_ONLY
+        ret = PTLS_ALERT_HANDSHAKE_FAILURE;
+        goto Exit;
+#else
         /* send certificate request if client authentication is activated */
         if (tls->ctx->require_client_authentication) {
             ptls_push_message(emitter, tls->key_schedule, PTLS_HANDSHAKE_TYPE_CERTIFICATE_REQUEST, {
@@ -4781,9 +4885,14 @@ static int server_handle_hello(ptls_t *tls, ptls_message_emitter_t *emitter, ptl
         /* send certificateverify, finished, and complete the handshake */
         if ((ret = server_finish_handshake(tls, emitter, 1, &ch->signature_algorithms)) != 0)
             goto Exit;
+#endif
     } else {
         /* send finished, and complete the handshake */
+#ifdef PSK_ONLY
+        if ((ret = server_finish_handshake(tls, emitter)) != 0)
+#else
         if ((ret = server_finish_handshake(tls, emitter, 0, NULL)) != 0)
+#endif
             goto Exit;
     }
 
@@ -4803,11 +4912,16 @@ Exit:
 #undef EMIT_HELLO_RETRY_REQUEST
 }
 
-static int server_finish_handshake(ptls_t *tls, ptls_message_emitter_t *emitter, int send_cert_verify,
-                                   struct st_ptls_signature_algorithms_t *signature_algorithms)
+static int server_finish_handshake(ptls_t *tls, ptls_message_emitter_t *emitter
+#ifndef PSK_ONLY
+                                   , int send_cert_verify
+                                   , struct st_ptls_signature_algorithms_t *signature_algorithms
+#endif
+                                   )
 {
     int ret;
 
+#ifndef PSK_ONLY
     if (send_cert_verify) {
         if ((ret = send_certificate_verify(tls, emitter, signature_algorithms, PTLS_SERVER_CERTIFICATE_VERIFY_CONTEXT_STRING)) !=
             0) {
@@ -4817,6 +4931,7 @@ static int server_finish_handshake(ptls_t *tls, ptls_message_emitter_t *emitter,
             goto Exit;
         }
     }
+#endif
 
     if ((ret = send_finished(tls, emitter)) != 0)
         goto Exit;
@@ -4840,7 +4955,12 @@ static int server_finish_handshake(ptls_t *tls, ptls_message_emitter_t *emitter,
             tls->state = PTLS_STATE_SERVER_EXPECT_END_OF_EARLY_DATA;
         }
     } else if (tls->ctx->require_client_authentication) {
+#ifdef PSK_ONLY
+        ret = PTLS_ALERT_HANDSHAKE_FAILURE;
+        goto Exit;
+#else
         tls->state = PTLS_STATE_SERVER_EXPECT_CERTIFICATE;
+#endif
     } else {
         tls->state = PTLS_STATE_SERVER_EXPECT_FINISHED;
     }
@@ -5300,11 +5420,15 @@ void ptls_free(ptls_t *tls)
     } else {
         if (tls->client.key_share_ctx != NULL)
             tls->client.key_share_ctx->on_exchange(&tls->client.key_share_ctx, 1, NULL, ptls_iovec_init(NULL, 0));
+#ifndef PSK_ONLY
         if (tls->client.certificate_request.context.base != NULL)
             free(tls->client.certificate_request.context.base);
+#endif
     }
+#ifndef PSK_ONLY
     if (tls->certificate_verify.cb != NULL)
         tls->certificate_verify.cb(tls->certificate_verify.verify_ctx, 0, ptls_iovec_init(NULL, 0), ptls_iovec_init(NULL, 0));
+#endif
     if (tls->pending_handshake_secret != NULL) {
         ptls_clear_memory(tls->pending_handshake_secret, PTLS_MAX_DIGEST_SIZE);
         free(tls->pending_handshake_secret);
@@ -5459,6 +5583,7 @@ static int handle_client_handshake_message(ptls_t *tls, ptls_message_emitter_t *
             ret = PTLS_ALERT_UNEXPECTED_MESSAGE;
         }
         break;
+#ifndef PSK_ONLY
     case PTLS_STATE_CLIENT_EXPECT_CERTIFICATE_REQUEST_OR_CERTIFICATE:
         if (type == PTLS_HANDSHAKE_TYPE_CERTIFICATE_REQUEST) {
             ret = client_handle_certificate_request(tls, message, properties);
@@ -5485,6 +5610,7 @@ static int handle_client_handshake_message(ptls_t *tls, ptls_message_emitter_t *
             ret = PTLS_ALERT_UNEXPECTED_MESSAGE;
         }
         break;
+#endif
     case PTLS_STATE_CLIENT_EXPECT_FINISHED:
         if (type == PTLS_HANDSHAKE_TYPE_FINISHED && is_end_of_record) {
             ret = client_handle_finished(tls, emitter, message);
@@ -5537,6 +5663,7 @@ static int handle_server_handshake_message(ptls_t *tls, ptls_message_emitter_t *
             ret = PTLS_ALERT_HANDSHAKE_FAILURE;
         }
         break;
+#ifndef PSK_ONLY
     case PTLS_STATE_SERVER_EXPECT_CERTIFICATE:
         if (type == PTLS_HANDSHAKE_TYPE_CERTIFICATE) {
             ret = server_handle_certificate(tls, message);
@@ -5551,6 +5678,7 @@ static int handle_server_handshake_message(ptls_t *tls, ptls_message_emitter_t *
             ret = PTLS_ALERT_UNEXPECTED_MESSAGE;
         }
         break;
+#endif
     case PTLS_STATE_SERVER_EXPECT_END_OF_EARLY_DATA:
         assert(!tls->ctx->omit_end_of_early_data);
         if (type == PTLS_HANDSHAKE_TYPE_END_OF_EARLY_DATA) {
@@ -5856,8 +5984,10 @@ int ptls_handshake(ptls_t *tls, ptls_buffer_t *_sendbuf, const void *input, size
         assert(input == NULL || *inlen == 0);
         return send_client_hello(tls, &emitter.super, properties, NULL);
     }
+#ifndef PSK_ONLY
     case PTLS_STATE_SERVER_GENERATING_CERTIFICATE_VERIFY:
         return server_finish_handshake(tls, &emitter.super, 1, NULL);
+#endif
     default:
         break;
     }
@@ -6434,13 +6564,17 @@ size_t ptls_get_read_epoch(ptls_t *tls)
         assert(!tls->ctx->omit_end_of_early_data);
         return 1; /* 0-rtt */
     case PTLS_STATE_CLIENT_EXPECT_ENCRYPTED_EXTENSIONS:
+#ifndef PSK_ONLY
     case PTLS_STATE_CLIENT_EXPECT_CERTIFICATE_REQUEST_OR_CERTIFICATE:
     case PTLS_STATE_CLIENT_EXPECT_CERTIFICATE:
     case PTLS_STATE_CLIENT_EXPECT_CERTIFICATE_VERIFY:
+#endif
     case PTLS_STATE_CLIENT_EXPECT_FINISHED:
+#ifndef PSK_ONLY
     case PTLS_STATE_SERVER_GENERATING_CERTIFICATE_VERIFY:
     case PTLS_STATE_SERVER_EXPECT_CERTIFICATE:
     case PTLS_STATE_SERVER_EXPECT_CERTIFICATE_VERIFY:
+#endif
     case PTLS_STATE_SERVER_EXPECT_FINISHED:
         return 2; /* handshake */
     case PTLS_STATE_CLIENT_POST_HANDSHAKE:
@@ -6486,10 +6620,12 @@ int ptls_server_handle_message(ptls_t *tls, ptls_buffer_t *sendbuf, size_t epoch
         {sendbuf, &tls->traffic_protection.enc, 0, begin_raw_message, commit_raw_message}, SIZE_MAX, epoch_offsets};
     struct st_ptls_record_t rec = {PTLS_CONTENT_TYPE_HANDSHAKE, 0, inlen, input};
 
+#ifndef PSK_ONLY
     if (tls->state == PTLS_STATE_SERVER_GENERATING_CERTIFICATE_VERIFY) {
         assert(input == NULL || inlen == 0);
         return server_finish_handshake(tls, &emitter.super, 1, NULL);
     }
+#endif
 
     assert(input != NULL);
 
