@@ -80,8 +80,8 @@ static int x25519_create_key_exchange(ptls_key_exchange_algorithm_t *algo, ptls_
 
     if ((ctx = (struct st_x25519_key_exchange_t *)malloc(sizeof(*ctx))) == NULL)
         return PTLS_ERROR_NO_MEMORY;
-    ctx->super = (ptls_key_exchange_context_t){algo, ptls_iovec_init(ctx->pub, sizeof(ctx->pub)), x25519_on_exchange};
     x25519_create_keypair(ctx->priv, ctx->pub);
+    ctx->super = (ptls_key_exchange_context_t){algo, ptls_iovec_init(ctx->pub, sizeof(ctx->pub)), x25519_on_exchange};
 
     *_ctx = &ctx->super;
     return 0;
