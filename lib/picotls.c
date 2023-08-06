@@ -2012,6 +2012,25 @@ Exit:
     return ret;
 }
 
+#else // PSK_ONLY
+
+static int skip_signature_algorithms(const uint8_t **src, const uint8_t *end)
+{
+    int ret;
+
+    ptls_decode_block(*src, end, 2, {
+        do {
+            uint16_t id;
+            if ((ret = ptls_decode16(&id, src, end)) != 0)
+                goto Exit;
+        } while (*src != end);
+    });
+
+    ret = 0;
+Exit:
+    return ret;
+}
+
 #endif // PSK_ONLY
 
 static int select_cipher(ptls_cipher_suite_t **selected, ptls_cipher_suite_t **candidates, const uint8_t *src,
@@ -3742,8 +3761,8 @@ static int decode_client_hello(ptls_context_t *ctx, struct st_ptls_client_hello_
             break;
         case PTLS_EXTENSION_TYPE_SIGNATURE_ALGORITHMS:
 #ifdef PSK_ONLY
-            ret = PTLS_ALERT_ILLEGAL_PARAMETER;
-            goto Exit;
+            if ((ret = skip_signature_algorithms(&src, end)) != 0)
+                goto Exit;
 #else
             if ((ret = decode_signature_algorithms(&ch->signature_algorithms, &src, end)) != 0)
                 goto Exit;
